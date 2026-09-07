@@ -83,19 +83,13 @@ CLOUDFLARE_API_KEY=...
 
 `.env` ist über `.gitignore` ausgeschlossen und soll nicht committed werden.
 
-Die Variablen müssen exportiert sein, bevor der Scanner gestartet wird:
+Die `.env` im Projektroot wird beim Start automatisch geladen und ihre Variablen werden exportiert. Ein manuelles `source .env` ist nicht mehr nötig.
 
 ```bash
-set -a
-source .env
-set +a
+./fetch_free_models.sh --all
 ```
 
-Danach:
-
-```bash
-./fetch_free_models.sh
-```
+Dasselbe gilt für die einzelnen Provider-Tests, weil die `.env` zentral über `_lib.sh` geladen wird.
 
 ## Verwendung
 
