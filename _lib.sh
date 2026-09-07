@@ -26,6 +26,24 @@ fail() { echo -e "${RED}FAIL${NC}"; }
 skip() { echo -e "${YELLOW}SKIP${NC}"; }
 warn() { echo -e "${YELLOW}WARN${NC}: $1"; }
 
+# Provider-spezifischen Abstand zwischen Test-Requests ermitteln.
+# Beispiel: OPENROUTER_RATE_LIMIT_SECONDS=1.5
+provider_rate_limit_seconds() {
+  local provider="$1"
+  local var
+  var="$(printf '%s_RATE_LIMIT_SECONDS' "$provider" | tr '[:lower:]-' '[:upper:]_')"
+  printf '%s\n' "${!var:-1}"
+}
+
+# Harte Quoten erkennen, bei denen weiteres Testen im selben Lauf keinen Sinn hat.
+is_hard_provider_limit() {
+  local msg="${1,,}"
+  [[ "$msg" == *"free-models-per-day"* || \
+     "$msg" == *"daily limit"* || \
+     "$msg" == *"daily quota"* || \
+     "$msg" == *"per day"* ]]
+}
+
 # GET mit timeout, bearer auth
 curl_get() {
   local url="$1"
@@ -164,6 +182,28 @@ test_zencode_once() {
     $(_zopen_headers) \
     -d '{"model":"'"$model"'","messages":[{"role":"user","content":"Say exactly: OK"}],"max_tokens":5}' \
     2>/dev/null
+}
+
+# OpenCode-spezifischer Test mit den erwarteten Headern, aber ohne Proxy-Rotation.
+test_opencode() {
+  local url="$1" model="$2"
+  local body
+  body=$(test_zencode_once "$url" "$model" "")
+  if [[ -z "$body" ]]; then
+    echo "ERROR: no response"
+    return 0
+  fi
+  echo "$body" | python3 -c "
+import json,sys
+try:
+    d=json.load(sys.stdin)
+    if 'error' in d:
+        print('ERROR:', d['error'].get('message','?'))
+    else:
+        print('OK')
+except Exception:
+    print('ERROR: unparseable')
+" 2>/dev/null | head -1
 }
 
 # Wie test_model, aber für OpenCode Free Tier: erst ohne Proxy; schlägt es fehl
@@ -323,13 +363,22 @@ run_module_tests() {
     exit 0
   fi
   echo "=== Free Models (${#ms[@]}) ==="
+  local delay
+  delay=$(provider_rate_limit_seconds "$PROVIDER")
+  local i=0
   for m in "${ms[@]}"; do
+    (( i > 0 )) && sleep "$delay"
+    i=$((i + 1))
     printf "  %-42s " "$m"
     r=$(test_one "$m")
     if [[ "$r" == "OK" ]]; then
       pass
     elif [[ "$r" == ERROR:* ]]; then
       echo -e "${RED}FAIL${NC} (${r#ERROR: })"
+      if is_hard_provider_limit "${r#ERROR: }"; then
+        echo "  Provider quota reached — stopping remaining model tests."
+        break
+      fi
     else
       fail
     fi
