@@ -73,8 +73,12 @@ curl_get() {
 
 # --- OpenCode Zen Free Tier ---
 # Free-Modelle laufen ohne API-Key (Authorization: Bearer public), sind aber
-# User-Agent-Gated. Die PrivateVPN-Hostnames sind stabil eingebaut;
-# PVPN_HOSTS kann in .env optional als Teilmenge/Override gesetzt werden.
+# User-Agent-Gated. Die PrivateVPN-Hostnames koennen dynamisch von der Website
+# geholt oder in .env als PVPN_HOSTS gesetzt werden.
+
+# Cache-Datei und Gueltigkeitsdauer fuer PVPN-Hosts
+PVPN_CACHE_FILE="/tmp/pvpn_hosts_cache"
+PVPN_CACHE_SECONDS=${PVPN_CACHE_SECONDS:-3600}  # 1 Stunde Default
 PVPN_DEFAULT_HOSTS=(
   ar-bue.pvdata.host
   au-bri.pvdata.host
@@ -161,11 +165,82 @@ PVPN_DEFAULT_HOSTS=(
   vn-hoc.pvdata.host
 )
 
-if [[ -n "${PVPN_HOSTS:-}" ]]; then
-  read -r -a PVPN_HOST_ARRAY <<< "$PVPN_HOSTS"
-else
-  PVPN_HOST_ARRAY=("${PVPN_DEFAULT_HOSTS[@]}")
-fi
+# Fetch PVPN hosts from PrivateVPN website
+fetch_pvpn_hosts() {
+  local url="https://privatevpn.com/de/serverliste/"
+  local tmp_file=$(mktemp)
+
+  echo "Fetching latest PVPN hosts from $url..."
+  if ! curl -s --max-time 15 -A "Mozilla/5.0" "$url" -o "$tmp_file" 2>/dev/null; then
+    echo "Warning: Could not fetch PVPN hosts. Using cache or fallback."
+    if [[ -f "$PVPN_CACHE_FILE" && -s "$PVPN_CACHE_FILE" ]]; then
+      readarray -t PVPN_HOST_ARRAY < "$PVPN_CACHE_FILE"
+      return 0
+    else
+      PVPN_HOST_ARRAY=("${PVPN_DEFAULT_HOSTS[@]}")
+      return 1
+    fi
+  fi
+
+  # Extract hostnames from the HTML table (2nd column = Hostname)
+  local hosts=()
+  while IFS= read -r line; do
+    if echo "$line" | grep -q "pvdata.host"; then
+      local host
+      host=$(echo "$line" | sed -n 's/.*| *\([a-z0-9-]*\.pvdata\.host\) *|.*/\1/p')
+      if [[ -n "$host" ]]; then
+        hosts+=("$host")
+      fi
+    fi
+  done < "$tmp_file"
+
+  if [[ ${#hosts[@]} -eq 0 ]]; then
+    rm -f "$tmp_file"
+    echo "Warning: No hosts extracted. Using cache or fallback."
+    if [[ -f "$PVPN_CACHE_FILE" && -s "$PVPN_CACHE_FILE" ]]; then
+      readarray -t PVPN_HOST_ARRAY < "$PVPN_CACHE_FILE"
+      return 0
+    else
+      PVPN_HOST_ARRAY=("${PVPN_DEFAULT_HOSTS[@]}")
+      return 1
+    fi
+  fi
+
+  # Save to cache
+  printf '%s\n' "${hosts[@]}" > "$PVPN_CACHE_FILE"
+  touch -d "@$(( $(date +%s) + PVPN_CACHE_SECONDS ))" "$PVPN_CACHE_FILE" 2>/dev/null || true
+
+  PVPN_HOST_ARRAY=("${hosts[@]}")
+  rm -f "$tmp_file"
+  echo "Fetched ${#hosts[@]} PVPN hosts. Cache saved to $PVPN_CACHE_FILE"
+  return 0
+}
+
+# Initialize PVPN_HOST_ARRAY
+init_pvpn_hosts() {
+  # If PVPN_HOSTS is set in .env, use that
+  if [[ -n "${PVPN_HOSTS:-}" ]]; then
+    read -r -a PVPN_HOST_ARRAY <<< "$PVPN_HOSTS"
+    return 0
+  fi
+
+  # Check cache (if not older than PVPN_CACHE_SECONDS)
+  if [[ -f "$PVPN_CACHE_FILE" && -s "$PVPN_CACHE_FILE" ]]; then
+    local current_time=$(date +%s)
+    local file_mtime=$(stat -c %Y "$PVPN_CACHE_FILE" 2>/dev/null || echo 0)
+    local cache_age=$((current_time - file_mtime))
+    if [[ $cache_age -lt $PVPN_CACHE_SECONDS ]]; then
+      readarray -t PVPN_HOST_ARRAY < "$PVPN_CACHE_FILE"
+      return 0
+    fi
+  fi
+
+  # Fetch from website
+  fetch_pvpn_hosts
+}
+
+# Initialize PVPN hosts on script start
+init_pvpn_hosts
 
 # Index in einer Datei, weil test_model()/test_zencode() oft in einer
 # Command-Substitution laufen und ein Shell-Zähler dort verloren ginge.

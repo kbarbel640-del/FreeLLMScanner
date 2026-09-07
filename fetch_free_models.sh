@@ -107,6 +107,7 @@ show_menu() {
     i=$((i+1))
   done
   echo ""
+  echo "  p  Proxy Settings (fetch/update PVPN hosts)"
   echo "  q  Quit"
   echo ""
 }
@@ -172,20 +173,68 @@ fi
 # --- Auswahl auflösen ---
 selected=()
 if [[ $# -eq 0 ]]; then
-  show_menu
-  read -rp "Pick: " choice
-  case "$choice" in
-    0) run_all=true ;;
-    q|Q) exit 0 ;;
-    *)
-      if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -le ${#ALL_NAMES[@]} ]]; then
-        selected=("${ALL_NAMES[$((choice-1))]}")
-      else
-        echo "Invalid: $choice"
-        exit 1
-      fi
-      ;;
-  esac
+  while true; do
+    show_menu
+    read -rp "Pick: " choice
+    case "$choice" in
+      0)
+        run_all=true
+        break
+        ;;
+      p|P)
+        echo ""
+        echo "=== Proxy Settings ==="
+        echo ""
+        echo "  1  Fetch latest PVPN hosts from PrivateVPN website"
+        echo "  2  Use manual PVPN hosts (set PVPN_HOSTS in .env)"
+        echo "  3  Show current PVPN hosts"
+        echo "  b  Back to main menu"
+        echo ""
+        read -rp "Proxy option: " proxy_choice
+        case "$proxy_choice" in
+          1)
+            echo ""
+            fetch_pvpn_hosts
+            echo ""
+            read -rp "Press Enter to continue... " _
+            ;;
+          2)
+            echo ""
+            echo "Set PVPN_HOSTS in your .env file, e.g.:"
+            echo "  PVPN_HOSTS=\"us-nyc.pvdata.host us-lax.pvdata.host de-fra.pvdata.host\""
+            echo ""
+            read -rp "Press Enter to continue... " _
+            ;;
+          3)
+            echo ""
+            echo "Current PVPN hosts (${#PVPN_HOST_ARRAY[@]}):"
+            printf "  %s\n" "${PVPN_HOST_ARRAY[@]}"
+            echo ""
+            read -rp "Press Enter to continue... " _
+            ;;
+          b|B)
+            break
+            ;;
+          *)
+            echo "Invalid proxy option: $proxy_choice"
+            read -rp "Press Enter to continue... " _
+            ;;
+        esac
+        ;;
+      q|Q)
+        exit 0
+        ;;
+      *)
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -le ${#ALL_NAMES[@]} ]]; then
+          selected=("${ALL_NAMES[$((choice-1))]}")
+          break
+        else
+          echo "Invalid: $choice"
+          read -rp "Press Enter to continue... " _
+        fi
+        ;;
+    esac
+  done
 fi
 
 if [[ ${#includes[@]} -gt 0 ]]; then
