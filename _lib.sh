@@ -171,7 +171,8 @@ fetch_pvpn_hosts() {
   local tmp_file=$(mktemp)
 
   echo "Fetching latest PVPN hosts from $url..."
-  if ! curl -s --max-time 15 -A "Mozilla/5.0" "$url" -o "$tmp_file" 2>/dev/null; then
+  # Use -L to follow redirects (de -> en), -k to allow insecure if needed
+  if ! curl -Lks --max-time 15 -A "Mozilla/5.0" "$url" -o "$tmp_file" 2>/dev/null; then
     echo "Warning: Could not fetch PVPN hosts. Using cache or fallback."
     if [[ -f "$PVPN_CACHE_FILE" && -s "$PVPN_CACHE_FILE" ]]; then
       readarray -t PVPN_HOST_ARRAY < "$PVPN_CACHE_FILE"
@@ -182,16 +183,16 @@ fetch_pvpn_hosts() {
     fi
   fi
 
-  # Extract hostnames from the HTML (look for pvdata.host patterns)
+  # Extract hostnames from the HTML using grep -oE
+  # The page may redirect to /en/serverlist, so we follow redirects with -L
   local hosts=()
-  # Use grep to find all pvdata.host entries in the entire file
   local all_hosts
   all_hosts=$(grep -oE '[a-z0-9-]+\.pvdata\.host' "$tmp_file" 2>/dev/null | sort -u || true)
+  
   if [[ -n "$all_hosts" ]]; then
+    # Read into array, filtering empty lines
     while IFS= read -r host; do
-      if [[ -n "$host" ]]; then
-        hosts+=("$host")
-      fi
+      [[ -n "$host" ]] && hosts+=("$host")
     done <<< "$all_hosts"
   fi
 
