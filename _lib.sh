@@ -167,12 +167,12 @@ PVPN_DEFAULT_HOSTS=(
 
 # Fetch PVPN hosts from PrivateVPN website
 fetch_pvpn_hosts() {
-  local url="https://privatevpn.com/de/serverliste/"
+  local url="https://privatevpn.com/serverlist"
   local tmp_file=$(mktemp)
 
   echo "Fetching latest PVPN hosts from $url..."
-  # Use -L to follow redirects (de -> en), -k to allow insecure if needed
-  if ! curl -Lks --max-time 15 -A "Mozilla/5.0" "$url" -o "$tmp_file" 2>/dev/null; then
+  # Use -L to follow redirects, -k to allow insecure if needed
+  if ! curl -Lk -s --max-time 15 -A "Mozilla/5.0" "$url" -o "$tmp_file" 2>/dev/null; then
     echo "Warning: Could not fetch PVPN hosts. Using cache or fallback."
     if [[ -f "$PVPN_CACHE_FILE" && -s "$PVPN_CACHE_FILE" ]]; then
       readarray -t PVPN_HOST_ARRAY < "$PVPN_CACHE_FILE"
