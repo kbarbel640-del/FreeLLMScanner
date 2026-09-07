@@ -166,14 +166,47 @@ if [[ -n "${PVPN_HOSTS:-}" ]]; then
 else
   PVPN_HOST_ARRAY=("${PVPN_DEFAULT_HOSTS[@]}")
 fi
-ZPROXY_IDX=0
+
+# Index in einer Datei, weil test_model()/test_zencode() oft in einer
+# Command-Substitution laufen und ein Shell-Zähler dort verloren ginge.
+_zproxy_idx_file() { echo "/tmp/freellmscanner_$$_zproxy_idx"; }
+
+_zproxy_idx_get() {
+  local f idx=0
+  f=$(_zproxy_idx_file)
+  if [[ -f "$f" ]]; then
+    idx=$(<"$f")
+    [[ "$idx" =~ ^[0-9]+$ ]] || idx=0
+  fi
+  echo "$idx"
+}
+
+_zproxy_idx_set() {
+  echo "$1" > "$(_zproxy_idx_file)"
+}
+
+_zproxy_advance() {
+  local n="${#PVPN_HOST_ARRAY[@]}"
+  (( n > 0 )) || return 0
+  _zproxy_idx_set $(( $(_zproxy_idx_get) + 1 ))
+}
 
 _zopen_proxy() {
   local hosts=("${PVPN_HOST_ARRAY[@]}")
+  local idx
   if [[ ${#hosts[@]} -eq 0 || -z "${PVPN_USER:-}" || -z "${PVPN_PASS:-}" ]]; then
     echo ""; return 1
   fi
-  echo "socks5://${PVPN_USER}:${PVPN_PASS}@${hosts[$((ZPROXY_IDX % ${#hosts[@]}))]}"
+  idx=$(_zproxy_idx_get)
+  echo "socks5://${PVPN_USER}:${PVPN_PASS}@${hosts[$((idx % ${#hosts[@]}))]}"
+}
+
+# Ratenlimits, bei denen ein anderer Exit-Host helfen kann.
+is_rotatable_limit() {
+  local msg="${1,,}"
+  [[ "$msg" == *"rate limit"* || \
+     "$msg" == *"too many requests"* || \
+     "$msg" == *"try again later"* ]]
 }
 
 # Single Chat-Completion für OpenCode Zen Free Tier ($1=url, $2=model, $3=proxy oder leer)
@@ -196,16 +229,8 @@ test_zencode_once() {
     2>/dev/null
 }
 
-# OpenCode-spezifischer Test mit den erwarteten Headern, aber ohne Proxy-Rotation.
-test_opencode() {
-  local url="$1" model="$2"
-  local body
-  body=$(test_zencode_once "$url" "$model" "")
-  if [[ -z "$body" ]]; then
-    echo "ERROR: no response"
-    return 0
-  fi
-  echo "$body" | python3 -c "
+_zencode_parse() {
+  echo "$1" | python3 -c "
 import json,sys
 try:
     d=json.load(sys.stdin)
@@ -218,40 +243,49 @@ except Exception:
 " 2>/dev/null | head -1
 }
 
-# Bestehender optionaler OpenCode-Proxy-Testpfad für manuelle Provider-Tests.
+# OpenCode ohne Proxy (Fallback, wenn PVPN nicht konfiguriert ist).
+test_opencode() {
+  local url="$1" model="$2"
+  local body
+  body=$(test_zencode_once "$url" "$model" "")
+  if [[ -z "$body" ]]; then
+    echo "ERROR: no response"
+    return 0
+  fi
+  _zencode_parse "$body"
+}
+
+# OpenCode-Test mit Round-Robin über die PVPN-Hosts.
+# Jeder Versuch nimmt den nächsten Host; nach Erfolg/Misserfolg bleibt der
+# Zeiger dort, damit der nächste Modelltest nicht dieselbe IP benutzt.
 test_zencode() {
   local url="$1" model="$2"
   local hosts=("${PVPN_HOST_ARRAY[@]}")
-  local max=1 run=0 body result last_err="ERROR: no response"
+  local max=1 run=0 body result last_err="ERROR: no response" proxy=""
   if [[ -n "${PVPN_USER:-}" && -n "${PVPN_PASS:-}" && ${#hosts[@]} -gt 0 ]]; then
-    max=$((1 + ${#hosts[@]}))
+    max=${#hosts[@]}
   fi
   while (( run < max )); do
     run=$((run + 1))
-    local proxy=""
-    if (( run > 1 )); then
+    proxy=""
+    if [[ -n "${PVPN_USER:-}" && -n "${PVPN_PASS:-}" && ${#hosts[@]} -gt 0 ]]; then
       proxy=$(_zopen_proxy) || break
     fi
     body=$(test_zencode_once "$url" "$model" "$proxy")
+    _zproxy_advance
     if [[ -z "$body" ]]; then
-      ZPROXY_IDX=$((ZPROXY_IDX + 1)); last_err="ERROR: no response"; continue
+      last_err="ERROR: no response"
+      continue
     fi
-    result=$(echo "$body" | python3 -c "
-import json,sys
-try:
-    d=json.load(sys.stdin)
-    if 'error' in d:
-        print('ERROR:', d['error'].get('message','?'))
-    else:
-        print('OK')
-except Exception:
-    print('ERROR: unparseable')
-" 2>/dev/null | head -1)
+    result=$(_zencode_parse "$body")
     if [[ "$result" == "OK" ]]; then
       echo "OK"; return 0
     fi
     last_err="ERROR: ${result#ERROR: }"
-    ZPROXY_IDX=$((ZPROXY_IDX + 1))
+    # Nur bei Ratenlimit/leerer Antwort den nächsten Host versuchen.
+    if ! is_rotatable_limit "${result#ERROR: }" && [[ -n "$body" ]]; then
+      break
+    fi
   done
   echo "$last_err"
 }
@@ -283,7 +317,7 @@ test_model() {
   # OpenCode braucht einen eigenen Header-Satz; der generische Bearer-Pfad
   # würde dort die Free-Tier-Requests falsch senden.
   if [[ "$provider" == "opencode" ]]; then
-    result=$(test_opencode "$url" "$model")
+    result=$(test_zencode "$url" "$model")
     if [[ "$result" == ERROR:* ]]; then
       msg="${result#ERROR: }"
       is_hard_provider_limit "$msg" && : > "$marker"
