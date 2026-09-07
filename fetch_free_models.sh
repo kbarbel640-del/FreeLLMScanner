@@ -40,7 +40,6 @@ PROVIDERS=(
   "vercel|https://ai-gateway.vercel.sh/v1/models|vercel.toml"
   "deepseek|https://api.deepseek.com/v1/models|deepseek.toml"
   "mistral|https://api.mistral.ai/v1/models|mistral.toml"
-  "cloudflare|https://api.cloudflare.com/client/v4/accounts/5d475b73c61f6fb8cee10424e8511065/ai/v1/models|cloudflare.toml"
 )
 
 ALL_NAMES=()
@@ -89,9 +88,6 @@ free_models_for() {
       # Quelle/Logik: provider_tests/07_mistral.sh (filtert /v1/models auf
       # capabilities.completion_chat). Diese Liste = Snapshot des Schlüssels.
       echo "codestral-2508 codestral-latest mistral-code-latest mistral-code-fim-latest mistral-small-2603 mistral-small-latest mistral-vibe-cli-fast magistral-small-latest voxtral-small-2507 voxtral-small-latest labs-leanstral-1-5-1 labs-leanstral-1-5 ministral-3b-2512 ministral-3b-latest ministral-8b-2512 ministral-8b-latest ministral-14b-2512 ministral-14b-latest mistral-medium-latest mistral-medium mistral-medium-3-5 mistral-medium-3.5 mistral-medium-3 mistral-medium-2604 mistral-vibe-cli-latest mistral-vibe-cli-with-tools magistral-medium-latest"
-      ;;
-    cloudflare)
-      echo "@cf/meta/llama-3.3-70b-instruct-fp8-fast @cf/qwen/qwen3-30b-a3b-fp8 @cf/meta/llama-4-scout-17b-16e-instruct"
       ;;
     *) echo "" ;;
   esac
