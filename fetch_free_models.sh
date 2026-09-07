@@ -107,8 +107,43 @@ show_menu() {
     i=$((i+1))
   done
   echo ""
+  echo "  k  API-Key Settings"
   echo "  p  Proxy Settings (fetch/update PVPN hosts)"
   echo "  q  Quit"
+  echo ""
+}
+
+# Show API key settings menu
+show_api_key_menu() {
+  echo ""
+  echo "=== API Key Settings ==="
+  echo ""
+  echo "Current .env file:"
+  if [[ -f "$BASE/.env" ]]; then
+    echo "  File: $BASE/.env"
+    echo "  Contents:"
+    grep -v "^#" "$BASE/.env" 2>/dev/null | grep -v "^$" | sed 's/^/    /'
+  else
+    echo "  No .env file found in $BASE"
+  fi
+  echo ""
+  echo "Available API key variables (from agents/*.toml):"
+  for toml_file in "$TOML_DIR"/*.toml; do
+    if [[ -f "$toml_file" ]]; then
+      local var_name
+      var_name=$(grep 'api_key_env' "$toml_file" 2>/dev/null | head -1 | cut -d'"' -f2)
+      if [[ -n "$var_name" ]]; then
+        local provider_name
+        provider_name=$(basename "$toml_file" .toml)
+        local current_value="${!var_name:-NOT SET}"
+        printf "  %-15s  %s (%s)\n" "$provider_name:" "$var_name" "$current_value"
+      fi
+    fi
+  done
+  echo ""
+  echo "  1  Edit .env file"
+  echo "  2  Show example .env"
+  echo "  b  Back"
   echo ""
 }
 
@@ -180,6 +215,10 @@ if [[ $# -eq 0 ]]; then
       0)
         run_all=true
         break
+        ;;
+      k|K)
+        show_api_key_menu
+        read -rp "Press Enter to continue... " _
         ;;
       p|P)
         echo ""
