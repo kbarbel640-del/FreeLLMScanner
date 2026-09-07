@@ -1,0 +1,6 @@
+# Secrets — niemals committen
+.env
+
+# OS / Editor
+.DS_Store
+*.swp

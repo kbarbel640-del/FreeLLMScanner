@@ -1,0 +1,111 @@
+{
+  "providers": {
+    "cerebras": {
+      "last_check": "2026-09-01T10:00:00+00:00",
+      "found": [
+        "gemma-4-31b",
+        "qwen-3.8-27b",
+        "gpt-oss-120b"
+      ],
+      "tested": [
+        {
+          "model": "zai-glm-4.7",
+          "status": "PASS",
+          "msg": ""
+        },
+        {
+          "model": "gemma-4-31b",
+          "status": "PASS",
+          "msg": ""
+        },
+        {
+          "model": "gpt-oss-120b",
+          "status": "PASS",
+          "msg": ""
+        }
+      ],
+      "status": "ok"
+    },
+    "deepseek": {
+      "last_check": "2026-09-07T19:39:08+00:00",
+      "found": [
+        "deepseek-v4-flash",
+        "deepseek-v4-pro",
+        "deepseek-v4-flash-vision-exp"
+      ],
+      "tested": [
+        {
+          "model": "deepseek-v4-flash",
+          "status": "FAIL",
+          "msg": "Insufficient Balance"
+        },
+        {
+          "model": "deepseek-v4-pro",
+          "status": "FAIL",
+          "msg": "Insufficient Balance"
+        }
+      ],
+      "status": "fail"
+    },
+    "mistral": {
+      "last_check": "2026-09-07T20:26:41+00:00",
+      "found": [
+        "codestral-2508",
+        "codestral-latest",
+        "mistral-code-latest",
+        "mistral-code-fim-latest",
+        "mistral-small-2603",
+        "mistral-small-latest",
+        "mistral-vibe-cli-fast",
+        "magistral-small-latest",
+        "voxtral-small-2507",
+        "voxtral-small-latest",
+        "labs-leanstral-1-5-1",
+        "labs-leanstral-1-5",
+        "ministral-3b-2512",
+        "ministral-3b-latest",
+        "ministral-8b-2512",
+        "ministral-8b-latest",
+        "ministral-14b-2512",
+        "ministral-14b-latest",
+        "mistral-medium-latest",
+        "mistral-medium",
+        "mistral-medium-3-5",
+        "mistral-medium-3.5",
+        "mistral-medium-3",
+        "mistral-medium-2604",
+        "mistral-vibe-cli-latest",
+        "mistral-vibe-cli-with-tools",
+        "magistral-medium-latest",
+        "mistral-embed-2312",
+        "mistral-embed",
+        "codestral-embed",
+        "codestral-embed-2505",
+        "mistral-moderation-2603",
+        "mistral-ocr-2512",
+        "mistral-ocr-3-0",
+        "mistral-ocr-3",
+        "mistral-ocr-4-0",
+        "mistral-ocr-latest",
+        "mistral-ocr-4",
+        "mistral-ocr-4-1",
+        "voxtral-mini-2602",
+        "voxtral-mini-latest",
+        "voxtral-mini-transcribe-realtime-2602",
+        "voxtral-mini-realtime-2602",
+        "voxtral-mini-realtime-latest",
+        "voxtral-mini-tts-2603",
+        "voxtral-mini-tts-latest"
+      ],
+      "tested": [
+        {
+          "model": "codestral-latest",
+          "status": "PASS",
+          "msg": ""
+        }
+      ],
+      "status": "ok"
+    }
+  },
+  "last_run": "2026-09-07T20:26:41+00:00"
+}
