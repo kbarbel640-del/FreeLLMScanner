@@ -73,10 +73,8 @@ curl_get() {
 
 # --- OpenCode Zen Free Tier ---
 # Free-Modelle laufen ohne API-Key (Authorization: Bearer public), sind aber
-# User-Agent-Gated: nur "User-Agent: opencode/<version>" + x-opencode-* Header
-# entsperren sie. Bei Ratenlimit/Fehlern wird die IP über den PVPN-Proxy
-# gewechselt. Die PrivateVPN-Hostnames sind stabil eingebaut; PVPN_HOSTS kann
-# in .env optional als Teilmenge/Override gesetzt werden.
+# User-Agent-Gated. Die PrivateVPN-Hostnames sind stabil eingebaut;
+# PVPN_HOSTS kann in .env optional als Teilmenge/Override gesetzt werden.
 PVPN_DEFAULT_HOSTS=(
   ar-bue.pvdata.host
   au-bri.pvdata.host
@@ -170,16 +168,6 @@ else
 fi
 ZPROXY_IDX=0
 
-_zopen_headers() {
-  printf '%s\n' \
-    -H "Authorization: Bearer public" \
-    -H "User-Agent: opencode/1.15.0 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.13" \
-    -H "x-opencode-client: cli" \
-    -H "x-opencode-project: global" \
-    -H "x-opencode-request: msg_$(date +%s%N)" \
-    -H "x-opencode-session: ses_$(date +%s%N)"
-}
-
 _zopen_proxy() {
   local hosts=("${PVPN_HOST_ARRAY[@]}")
   if [[ ${#hosts[@]} -eq 0 || -z "${PVPN_USER:-}" || -z "${PVPN_PASS:-}" ]]; then
@@ -192,10 +180,18 @@ _zopen_proxy() {
 test_zencode_once() {
   local url="$1" model="$2" proxy="$3"
   local proxy_args=()
+  local header_args=(
+    -H "Authorization: Bearer public"
+    -H "User-Agent: opencode/1.15.0 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.13"
+    -H "x-opencode-client: cli"
+    -H "x-opencode-project: global"
+    -H "x-opencode-request: msg_$(date +%s%N)"
+    -H "x-opencode-session: ses_$(date +%s%N)"
+  )
   [[ -n "$proxy" ]] && proxy_args=(-x "$proxy")
   curl -s --max-time 25 "${proxy_args[@]}" -X POST "$url" \
     -H "Content-Type: application/json" \
-    $(_zopen_headers) \
+    "${header_args[@]}" \
     -d '{"model":"'"$model"'","messages":[{"role":"user","content":"Say exactly: OK"}],"max_tokens":5}' \
     2>/dev/null
 }
