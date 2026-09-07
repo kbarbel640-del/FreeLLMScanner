@@ -143,8 +143,85 @@ show_api_key_menu() {
   echo ""
   echo "  1  Edit .env file"
   echo "  2  Show example .env"
+  echo "  3  Add new API key"
+  echo "  4  Test all API keys"
   echo "  b  Back"
   echo ""
+}
+
+# Test all API keys by making a simple /models request to each provider
+test_api_keys() {
+  echo "Testing all configured API keys..."
+  echo ""
+  
+  local passed=0
+  local failed=0
+  local skipped=0
+  
+  for toml_file in "$TOML_DIR"/*.toml; do
+    if [[ -f "$toml_file" ]]; then
+      local var_name
+      var_name=$(grep 'api_key_env' "$toml_file" 2>/dev/null | head -1 | cut -d'"' -f2)
+      if [[ -n "$var_name" ]]; then
+        local provider_name
+        provider_name=$(basename "$toml_file" .toml)
+        local api_key="${!var_name:-}"
+        
+        if [[ -z "$api_key" ]]; then
+          echo "  ${YELLOW}SKIP${NC}  $provider_name ($var_name) - NOT SET"
+          skipped=$((skipped + 1))
+          continue
+        fi
+        
+        # Get the models URL for this provider
+        local models_url=""
+        for e in "${PROVIDERS[@]}"; do
+          IFS='|' read -r n u t <<< "$e"
+          if [[ "$n" == "$provider_name" ]]; then
+            models_url="$u"
+            break
+          fi
+        done
+        
+        if [[ -z "$models_url" ]]; then
+          echo "  ${YELLOW}SKIP${NC}  $provider_name - No models URL configured"
+          skipped=$((skipped + 1))
+          continue
+        fi
+        
+        # Test the API key with a simple GET request
+        echo -n "  Testing $provider_name ($var_name)... "
+        local response
+        response=$(curl -s --max-time 10 -H "Authorization: Bearer $api_key" "$models_url" 2>/dev/null || true)
+        
+        if [[ -n "$response" && "$response" != "{" && "$response" != *"error"* && "$response" != *"Error"* ]]; then
+          echo "${GREEN}PASS${NC}"
+          passed=$((passed + 1))
+        else
+          # Try to extract error message
+          local error_msg
+          error_msg=$(echo "$response" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    if 'error' in d:
+        print(d['error'].get('message', str(d['error']))) 
+    elif 'Error' in str(d):
+        print(str(d)[:100])
+    else:
+        print('Unknown error')
+except:
+    print('No valid JSON response')
+" 2>/dev/null || echo "No response")
+          echo "${RED}FAIL${NC} ($error_msg)"
+          failed=$((failed + 1))
+        fi
+      fi
+    fi
+  done
+  
+  echo ""
+  echo "Results: ${GREEN}${passed} PASS${NC}, ${RED}${failed} FAIL${NC}, ${YELLOW}${skipped} SKIPPED${NC}"
 }
 
 usage() {
@@ -217,8 +294,49 @@ if [[ $# -eq 0 ]]; then
         break
         ;;
       k|K)
-        show_api_key_menu
-        read -rp "Press Enter to continue... " _
+        while true; do
+          show_api_key_menu
+          read -rp "API Key option: " api_choice
+          case "$api_choice" in
+            1)
+              echo ""
+              if [[ -f "$BASE/.env" ]]; then
+                nano "$BASE/.env"
+              else
+                cp "$BASE/.env.example" "$BASE/.env"
+                echo "Created .env from .env.example"
+                nano "$BASE/.env"
+              fi
+              ;;
+            2)
+              echo ""
+              echo "Example .env content:"
+              cat "$BASE/.env.example"
+              read -rp "Press Enter to continue... " _
+              ;;
+            3)
+              echo ""
+              read -rp "Enter variable name (e.g., OPENROUTER_API_KEY): " new_var
+              read -rp "Enter API key value: " new_value
+              echo "$new_var=$new_value" >> "$BASE/.env"
+              echo "Added $new_var to $BASE/.env"
+              read -rp "Press Enter to continue... " _
+              ;;
+            4)
+              echo ""
+              echo "=== Testing API Keys ==="
+              test_api_keys
+              read -rp "Press Enter to continue... " _
+              ;;
+            b|B)
+              break
+              ;;
+            *)
+              echo "Invalid option: $api_choice"
+              read -rp "Press Enter to continue... " _
+              ;;
+          esac
+        done
         ;;
       p|P)
         echo ""
