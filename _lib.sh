@@ -264,10 +264,17 @@ test_opencode() {
 }
 
 # OpenCode-Test mit Round-Robin über die PVPN-Hosts.
+# OPENCODE_PROXY_ROUND_ROBIN=0 schaltet die Proxy-Rotation komplett aus.
 # Jeder Versuch nimmt den nächsten Host; nach Erfolg/Misserfolg bleibt der
 # Zeiger dort, damit der nächste Modelltest nicht dieselbe IP benutzt.
 test_zencode() {
   local url="$1" model="$2"
+
+  if [[ "${OPENCODE_PROXY_ROUND_ROBIN:-1}" != "1" ]]; then
+    test_opencode "$url" "$model"
+    return 0
+  fi
+
   local hosts=("${PVPN_HOST_ARRAY[@]}")
   local max=1 run=0 body result last_err="ERROR: no response" proxy=""
   local cap="${ZPROXY_MAX_TRIES:-12}"
