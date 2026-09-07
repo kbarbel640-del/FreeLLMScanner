@@ -35,6 +35,22 @@ provider_rate_limit_seconds() {
   printf '%s\n' "${!var:-1}"
 }
 
+provider_from_url() {
+  case "$1" in
+    *opencode.ai*) echo opencode ;;
+    *openrouter.ai*) echo openrouter ;;
+    *kilo.ai*) echo kilo ;;
+    *nvidia.com*) echo nvidia ;;
+    *groq.com*) echo groq ;;
+    *cerebras.ai*) echo cerebras ;;
+    *vercel.sh*) echo vercel ;;
+    *deepseek.com*) echo deepseek ;;
+    *mistral.ai*) echo mistral ;;
+    *cloudflare.com*) echo cloudflare ;;
+    *) echo unknown ;;
+  esac
+}
+
 # Harte Quoten erkennen, bei denen weiteres Testen im selben Lauf keinen Sinn hat.
 is_hard_provider_limit() {
   local msg="${1,,}"
@@ -206,9 +222,7 @@ except Exception:
 " 2>/dev/null | head -1
 }
 
-# Wie test_model, aber für OpenCode Free Tier: erst ohne Proxy; schlägt es fehl
-# (Rate-Limit/Upstream), wird über PVPN-Proxy die IP rotiert. Gibt "OK" oder
-# "ERROR: <msg>" zurück.
+# Bestehender optionaler OpenCode-Proxy-Testpfad für manuelle Provider-Tests.
 test_zencode() {
   local url="$1" model="$2"
   local hosts=("${PVPN_HOST_ARRAY[@]}")
@@ -246,18 +260,47 @@ except Exception:
   echo "$last_err"
 }
 
-# POST chat completion, returns "OK" on success, empty on fail
+# POST chat completion. Dieser Pfad wird auch vom Hauptscanner verwendet.
+# Deshalb sitzt das Request-Throttling hier und greift automatisch bei
+# fetch_free_models.sh --all sowie bei einzelnen Provider-Scans.
 test_model() {
   local url="$1"
   local model="$2"
   local token="${3:-}"
+  local provider delay marker response result msg
+
+  provider=$(provider_from_url "$url")
+  delay=$(provider_rate_limit_seconds "$provider")
+  marker="/tmp/freellmscanner_$$_${provider}_hard_limit"
+
+  # Wenn dieser Lauf bereits eine harte Tagesquote getroffen hat, keine
+  # weiteren Requests mehr an diesen Provider schicken.
+  if [[ -f "$marker" ]]; then
+    echo "ERROR: provider daily quota already reached; request skipped"
+    return 0
+  fi
+
+  # Bewusst vor jedem Test-Request. Dadurch wirkt das auch in Command-
+  # Substitutions des Hauptscanners, wo Shell-Zustand sonst verloren ginge.
+  sleep "$delay"
+
+  # OpenCode braucht einen eigenen Header-Satz; der generische Bearer-Pfad
+  # würde dort die Free-Tier-Requests falsch senden.
+  if [[ "$provider" == "opencode" ]]; then
+    result=$(test_opencode "$url" "$model")
+    if [[ "$result" == ERROR:* ]]; then
+      msg="${result#ERROR: }"
+      is_hard_provider_limit "$msg" && : > "$marker"
+    fi
+    echo "$result"
+    return 0
+  fi
 
   local extra_args=()
   if [[ -n "$token" ]]; then
     extra_args+=(-H "Authorization: Bearer $token")
   fi
 
-  local response
   response=$(curl -s --max-time 25 \
     -X POST "$url" \
     -H "Content-Type: application/json" \
@@ -265,7 +308,7 @@ test_model() {
     -d '{"model":"'"$model"'","messages":[{"role":"user","content":"Say exactly: OK"}],"max_tokens":5}' \
     2>/dev/null)
 
-  echo "$response" | python3 -c "
+  result=$(echo "$response" | python3 -c "
 import json,sys
 try:
     d=json.load(sys.stdin)
@@ -275,7 +318,13 @@ try:
         print('OK')
 except:
     print('')
-" 2>/dev/null | head -1
+" 2>/dev/null | head -1)
+
+  if [[ "$result" == ERROR:* ]]; then
+    msg="${result#ERROR: }"
+    is_hard_provider_limit "$msg" && : > "$marker"
+  fi
+  echo "$result"
 }
 
 # Read api_key_env from TOML
@@ -363,12 +412,7 @@ run_module_tests() {
     exit 0
   fi
   echo "=== Free Models (${#ms[@]}) ==="
-  local delay
-  delay=$(provider_rate_limit_seconds "$PROVIDER")
-  local i=0
   for m in "${ms[@]}"; do
-    (( i > 0 )) && sleep "$delay"
-    i=$((i + 1))
     printf "  %-42s " "$m"
     r=$(test_one "$m")
     if [[ "$r" == "OK" ]]; then
