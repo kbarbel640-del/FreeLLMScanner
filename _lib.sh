@@ -182,17 +182,18 @@ fetch_pvpn_hosts() {
     fi
   fi
 
-  # Extract hostnames from the HTML table (2nd column = Hostname)
+  # Extract hostnames from the HTML (look for pvdata.host patterns)
   local hosts=()
-  while IFS= read -r line; do
-    if echo "$line" | grep -q "pvdata.host"; then
-      local host
-      host=$(echo "$line" | sed -n 's/.*| *\([a-z0-9-]*\.pvdata\.host\) *|.*/\1/p')
+  # Use grep to find all pvdata.host entries in the entire file
+  local all_hosts
+  all_hosts=$(grep -oE '[a-z0-9-]+\.pvdata\.host' "$tmp_file" 2>/dev/null | sort -u || true)
+  if [[ -n "$all_hosts" ]]; then
+    while IFS= read -r host; do
       if [[ -n "$host" ]]; then
         hosts+=("$host")
       fi
-    fi
-  done < "$tmp_file"
+    done <<< "$all_hosts"
+  fi
 
   if [[ ${#hosts[@]} -eq 0 ]]; then
     rm -f "$tmp_file"
