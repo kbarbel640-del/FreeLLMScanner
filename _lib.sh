@@ -201,12 +201,20 @@ _zopen_proxy() {
   echo "socks5://${PVPN_USER}:${PVPN_PASS}@${hosts[$((idx % ${#hosts[@]}))]}"
 }
 
-# Ratenlimits, bei denen ein anderer Exit-Host helfen kann.
+# Fehler, bei denen ein anderer Exit-Host helfen kann (Ratenlimit, 5xx, Upstream).
 is_rotatable_limit() {
   local msg="${1,,}"
   [[ "$msg" == *"rate limit"* || \
      "$msg" == *"too many requests"* || \
-     "$msg" == *"try again later"* ]]
+     "$msg" == *"try again later"* || \
+     "$msg" == *"internal server error"* || \
+     "$msg" == *"upstream"* || \
+     "$msg" == *"unavailable"* || \
+     "$msg" == *"overloaded"* || \
+     "$msg" == *"timeout"* || \
+     "$msg" == *"temporarily"* || \
+     "$msg" == *"bad gateway"* || \
+     "$msg" == *"unparseable"* ]]
 }
 
 # Single Chat-Completion für OpenCode Zen Free Tier ($1=url, $2=model, $3=proxy oder leer)
@@ -262,8 +270,10 @@ test_zencode() {
   local url="$1" model="$2"
   local hosts=("${PVPN_HOST_ARRAY[@]}")
   local max=1 run=0 body result last_err="ERROR: no response" proxy=""
+  local cap="${ZPROXY_MAX_TRIES:-12}"
   if [[ -n "${PVPN_USER:-}" && -n "${PVPN_PASS:-}" && ${#hosts[@]} -gt 0 ]]; then
     max=${#hosts[@]}
+    (( cap > 0 && cap < max )) && max=$cap
   fi
   while (( run < max )); do
     run=$((run + 1))
