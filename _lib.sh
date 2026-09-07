@@ -1,6 +1,15 @@
 # _lib.sh — Shared functions for provider tests
 set -euo pipefail
 
+# Lokale .env automatisch laden. Dadurch funktionieren sowohl der Hauptscanner
+# als auch die einzelnen provider_tests ohne vorheriges `source .env`.
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$LIB_DIR/.env" ]]; then
+  set -a
+  source "$LIB_DIR/.env"
+  set +a
+fi
+
 # Proxy ausschalten (SOCKS5 kann curl bremsen/kaputtmachen)
 unset ALL_PROXY
 unset HTTP_PROXY
